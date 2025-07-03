@@ -203,34 +203,95 @@ formato rectangular se utiliza un pulso de Nyquist, incluyendo el extremo del
 pulso 𝑠𝑖𝑛𝑐(𝑟𝑡).
 """
 
-A = 1                      # Amplitud del pulso
-n_bits = 10                # Numero de bits a transmitir
-bits = rand_key(n_bits)    # Generamos bits aleatorios
+# Parámetros generales
+A = 1                    # Amplitud de los pulsos
+n_bits = 8               # Número de bits a simular
+bits = rand_key(n_bits)  # Secuencia aleatoria de bits
 
-# Crear el tren de pulsos. Cambiar 'wave_format' para simular otro formato
-pulse_train = create_pulse_train(A, bits, wave_format="unipolarNRZ")
-# Calcular la densidad espectral de potencia
-spectrum = spectral_density(pulse_train)
+# --- 1. UNIPOLAR NRZ ---
+pulse_unrz = create_pulse_train(A, bits, wave_format="unipolarNRZ")
+spectrum_unrz = spectral_density(pulse_unrz)
 
-#Grafico en dominio temporal
-plt.figure(figsize=(10, 4))                   # Crea una nueva figura de 10x4 pulgadas
-plt.plot(pulse_train[0], pulse_train[1])      # Grafico del tren de pulsos
-plt.title("Dominio temporal")  # Titulo
-plt.xlabel("Tiempo [s]")                      # Etiqueta del eje X
-plt.ylabel("Amplitud")                        # Etiqueta del eje Y
-plt.grid(True)                                # Muestra grilla
-plt.tight_layout()                            # Ajusta los margenes
-plt.show()                                    # Muestra el grafico
+# Gráfico temporal
+plt.figure()
+plt.plot(pulse_unrz[0], pulse_unrz[1])
+plt.title("UNIPOLAR NRZ - Dominio Temporal")
+plt.xlabel("Tiempo [s]")
+plt.ylabel("Amplitud")
+plt.grid(True)
 
-#Grafico del espectro
-plt.figure(figsize=(10, 4))                   # Nueva figura
-plt.semilogy(spectrum[0], spectrum[1])        # Grafico espectral en escala logarítmica
-plt.title("Espectro de potencia")  # Titulo
-plt.xlabel("Frecuencia [Hz]")                 # Etiqueta del eje X
-plt.ylabel("PSD [dB]")                        # Etiqueta del eje Y
-plt.grid(True)                                # Muestra grilla
-plt.tight_layout()                            # Ajusta margenes
-plt.show()                                    # Muestra el grafico
+# Gráfico espectral
+plt.figure()
+plt.semilogy(spectrum_unrz[0], spectrum_unrz[1])
+plt.title("UNIPOLAR NRZ - Densidad Espectral")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("Magnitud (log)")
+plt.grid(True)
+
+# --- 2. MANCHESTER ---
+# Manchester se implementa como polarRZ con ret_amp = -A
+pulse_manchester = [pulse_unrz[0], step_value(-A/2, A/2, bits, RZ=0.5, ret_amp=-A), A, len(bits)]
+spectrum_manchester = spectral_density(pulse_manchester)
+
+# Gráfico temporal
+plt.figure()
+plt.plot(pulse_manchester[0], pulse_manchester[1])
+plt.title("MANCHESTER - Dominio Temporal")
+plt.xlabel("Tiempo [s]")
+plt.ylabel("Amplitud")
+plt.grid(True)
+
+# Gráfico espectral
+plt.figure()
+plt.semilogy(spectrum_manchester[0], spectrum_manchester[1])
+plt.title("MANCHESTER - Densidad Espectral")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("Magnitud (log)")
+plt.grid(True)
+
+# --- 3. UNRZ con pulso tipo sinc (Nyquist) ---
+
+# Creamos una función sinc normalizada para reemplazar al pulso rectangular
+def sinc_pulse_train(bits, A=1, Ts=1, span=6):
+    """
+    bits: secuencia de 0 y 1
+    A: amplitud
+    Ts: duración de símbolo (normalizada a 1)
+    span: cuántos períodos de sinc se suman por cada bit (más = más preciso)
+    """
+    t = np.arange(-span*Ts, len(bits)*Ts + span*Ts, 1/spp)  # eje temporal
+    signal = np.zeros_like(t)
+
+    for i, bit in enumerate(bits):
+        value = A if bit == 1 else 0
+        signal += value * np.sinc((t - i*Ts)/Ts)  # suma sinc desplazada
+
+    return t, signal
+
+# Generamos el tren de pulsos sinc
+t_sinc_unrz, y_sinc_unrz = sinc_pulse_train(bits, A)
+
+# Transformamos al mismo formato que el resto
+pulse_sinc_unrz = [t_sinc_unrz, y_sinc_unrz, A, len(bits)]
+spectrum_sinc_unrz = spectral_density(pulse_sinc_unrz)
+
+# Gráfico temporal
+plt.figure()
+plt.plot(t_sinc_unrz, y_sinc_unrz)
+plt.title("UNIPOLAR NRZ con Pulso sinc - Dominio Temporal")
+plt.xlabel("Tiempo [s]")
+plt.ylabel("Amplitud")
+plt.grid(True)
+
+# Gráfico espectral
+plt.figure()
+plt.semilogy(spectrum_sinc_unrz[0], spectrum_sinc_unrz[1])
+plt.title("UNIPOLAR NRZ con Pulso sinc - Densidad Espectral")
+plt.xlabel("Frecuencia [Hz]")
+plt.ylabel("Magnitud (log)")
+plt.grid(True)
+
+plt.show()
 
 """# Nivel 2:
 
@@ -246,6 +307,138 @@ extremo del pulso 𝑠𝑖𝑛𝑐(𝑟𝑡).
 
 """
 
+# Parámetros base
+A = 1
+n_bits = 12
+fc = 1000
+M = 4
+RZ = 1
+ret_amp = 0
+
+# Menu de selección del formato
+print("Seleccione el formato a simular:")
+print(" - unipolarNRZ")
+print(" - polarNRZ")
+print(" - unipolarRZ")
+print(" - polarRZ")
+print(" - manchester")
+print(" - AMI")
+print(" - M_ASK")
+formato = input("Formato: ")
+
+# Preguntamos si quiere usar pulso rectangular o sinc
+print("¿Desea usar pulso rectangular o sinc (Nyquist)?")
+print(" - rectangular")
+print(" - sinc")
+pulso_tipo = input("Tipo de pulso: ")
+
+# Generamos bits aleatorios
+bits = rand_key(n_bits)
+
+# Función manchester
+def manchester(bits, A):
+    y = np.empty(0)
+    for bit in bits:
+        if bit == 0:
+            pulse = np.append(define_step(-A, RZ, -A), define_step(A, RZ, -A))
+        else:
+            pulse = np.append(define_step(A, RZ, -A), define_step(-A, RZ, -A))
+        y = np.append(y, pulse)
+    t = np.arange(0, len(bits)*2, 1/spp)
+    return [t, y, A, len(bits)*2]
+
+# Función AMI
+def ami(bits, A):
+    y = np.empty(0)
+    polarity = 1
+    for bit in bits:
+        if bit == 0:
+            pulse = define_step(0)
+        else:
+            pulse = define_step(polarity * A)
+            polarity *= -1
+        y = np.append(y, pulse)
+    t = step_range(len(bits))
+    return [t, y, A, len(bits)]
+
+# Función unipolarNRZ con sinc
+def sinc_pulse_train_unrz(bits, A, Ts=1, span=6):
+    t = np.arange(-span*Ts, len(bits)*Ts + span*Ts, 1/spp)
+    y = np.zeros_like(t)
+    for i, bit in enumerate(bits):
+        if bit == 1:
+            y += A * np.sinc((t - i*Ts)/Ts)
+    return [t, y, A, len(bits)]
+
+# Función polarNRZ con sinc
+def sinc_pulse_train_pnrz(bits, A, Ts=1, span=6):
+    t = np.arange(-span*Ts, len(bits)*Ts + span*Ts, 1/spp)
+    y = np.zeros_like(t)
+    for i, bit in enumerate(bits):
+        amp = A/2 if bit == 1 else -A/2
+        y += amp * np.sinc((t - i*Ts)/Ts)
+    return [t, y, A, len(bits)]
+
+# Función M-ASK con sinc
+def sinc_pulse_train_mask(bits, A, M, fc, Ts=1, span=6):
+    word_len = int(np.log2(M))
+    constellation = define_constellation("M_ASK", A, M)
+    t = np.arange(-span*Ts, len(bits)*Ts/word_len + span*Ts, 1/spp)
+    y = np.zeros_like(t)
+    for i in range(0, len(bits), word_len):
+        word_val = 0
+        for j in range(word_len):
+            word_val += int(bits[i + j]) * 2**(word_len - 1 - j)
+        amp = constellation[1][word_val]
+        y += amp * np.sinc((t - (i/word_len)*Ts)/Ts)
+    return [t, y, A, len(bits)]
+
+# Elegimos cómo generar el tren de pulsos
+if pulso_tipo == "sinc":
+    if formato == "unipolarNRZ":
+        pulse_train = sinc_pulse_train_unrz(bits, A)
+    elif formato == "polarNRZ":
+        pulse_train = sinc_pulse_train_pnrz(bits, A)
+    elif formato == "M_ASK":
+        pulse_train = sinc_pulse_train_mask(bits, A, M, fc)
+    else:
+        print(f"El formato {formato} no admite pulso sinc.")
+        pulse_train = None
+else:
+    # Rectangular normal
+    if formato == "manchester":
+        pulse_train = manchester(bits, A)
+    elif formato == "AMI":
+        pulse_train = ami(bits, A)
+    elif formato == "M_ASK":
+        pulse_train = create_pulse_train(A, bits, wave_format="M_ASK", M=M, fc=fc)
+    else:
+        pulse_train = create_pulse_train(A, bits, wave_format=formato, RZ=RZ, M=2, fc=fc)
+
+# Si se pudo generar el tren de pulsos, graficamos
+if pulse_train:
+    spectrum = spectral_density(pulse_train, M=M if "M" in formato else 2, fc=fc)
+
+    # Gráficos
+    plt.figure(figsize=(14, 5))
+
+    # Dominio temporal
+    plt.subplot(1, 2, 1)
+    plt.plot(pulse_train[0], pulse_train[1])
+    plt.title(f"{formato} - Pulso {pulso_tipo} - Dominio temporal")
+    plt.xlabel("Tiempo [s]")
+    plt.ylabel("Amplitud")
+
+    # Dominio espectral
+    plt.subplot(1, 2, 2)
+    plt.semilogy(spectrum[0], spectrum[1])
+    plt.title(f"{formato} - Pulso {pulso_tipo} - Espectro")
+    plt.xlabel("Frecuencia [Hz]")
+    plt.ylabel("Magnitud")
+
+    plt.tight_layout()
+    plt.show()
+
 """# Nivel 3:
 
 Completar alguno de los dos niveles 1 o 2 con una de las siguientes opciones:
@@ -257,21 +450,75 @@ b. A través de un ejemplo por simulación, mostrar el efecto de la
 Interferencia Inter simbólica (ISI).
 """
 
-"""# EJERCICIO 2"""
+import numpy as np
+import matplotlib.pyplot as plt
 
-"""# Nivel 1:
+# Parámetros
+A = 1              # Amplitud
+N = 100             # Número de bits por simulación
+RZ = 1             # No retorno
+formato = "polarNRZ"  # Formato binario para la simulación
+snr_db_range = np.arange(0, 11, 1)  # Valores de SNR en dB (de 0 a 10)
+ber_empirical = []  # Aquí se guardarán los BER simulados
+
+# Función que simula transmisión y detección para un valor dado de SNR
+def simulate_ber(snr_db):
+    snr_linear = 10**(snr_db/10)         # Convertimos dB a valor lineal
+    Eb = (A**2)/2                        # Energía por bit (polar NRZ usa ±A/2 → A_eff = A/2)
+    N0 = Eb / snr_linear                 # Densidad espectral de ruido
+    sigma = np.sqrt(N0/2)               # Desvío estándar del ruido (AWGN)
+
+    bits = rand_key(N)                  # Secuencia aleatoria de bits
+    pulse_train = create_pulse_train(A, bits, wave_format=formato)  # Tren de pulsos
+    tx_signal = pulse_train[1]         # Señal transmitida
+
+    # Agregamos ruido gaussiano blanco
+    noise = np.random.normal(0, sigma, len(tx_signal))
+    rx_signal = tx_signal + noise
+
+    # Muestreo a la mitad de cada símbolo (1 símbolo = spp muestras)
+    decision_points = rx_signal[spp//2::spp]  # Tomamos una muestra por bit
+
+    # Decisión: >0 → bit 1, <=0 → bit 0
+    bits_rx = (decision_points > 0).astype(int)
+
+    # BER (bit error rate)
+    errors = np.sum(bits_rx != bits)
+    ber = errors / N
+    return ber
+
+# Simulamos para cada SNR
+for snr_db in snr_db_range:
+    ber = simulate_ber(snr_db)
+    ber_empirical.append(ber)
+    print(f"SNR = {snr_db} dB → BER = {ber}")
+
+# Graficamos resultados
+plt.figure(figsize=(8, 5))
+plt.semilogy(snr_db_range, ber_empirical, 'o-', label='BER simulada')
+plt.title("Tasa de error (BER) vs SNR para polarNRZ")
+plt.xlabel("SNR por bit (𝛾𝑏) [dB]")
+plt.ylabel("BER")
+plt.grid(True, which='both')
+plt.legend()
+plt.show()
+
+"""# EJERCICIO 2
+
+# Nivel 1:
 
 Se propone una simulación de formas de onda en el tiempo, y densidades
 espectrales correspondientes, de al menos dos formatos de transmisión pasabanda,
 uno de cada uno de los dos siguientes grupos:
 
 Grupo a: 2ASK, 2FSK, 2PSK
+
 Grupo b: MASK, MPSK con valor de M tal que M ≥ 4, M = 2^n
 """
 
 # Parámetros generales
 A = 1                      # Amplitud de la señal
-fc = 1000                  # Frecuencia de la portadora
+fc = 2000                  # Frecuencia de la portadora
 n_bits = 10                # Número de bits a transmitir
 bits = rand_key(n_bits)    # Generamos bits aleatorios
 
@@ -336,41 +583,41 @@ en el tiempo y la frecuencia.
 def simulate_digital_modulation(modulation_type, M, A=1, n_bits=None, fc=1000):
     """
     Función genérica para simular modulaciones digitales.
-    
+
     Parámetros:
     - modulation_type: Tipo de modulación ('ASK', 'PSK', 'QAM')
     - M: Orden de la modulación (M=2^n)
     - A: Amplitud de la señal
     - n_bits: Número de bits a transmitir (si es None, se calcula automáticamente)
     - fc: Frecuencia de la portadora
-    
+
     Retorna:
     - Diccionario con los resultados de la simulación
     """
     # Verificar que M sea potencia de 2
     if not (M > 0 and (M & (M - 1) == 0)):
         raise ValueError("M debe ser una potencia de 2")
-    
+
     # Calcular bits por símbolo
     bits_per_symbol = int(math.log2(M))
-    
+
     # Si no se especifica n_bits, usar un múltiplo del número de bits por símbolo
     if n_bits is None:
         n_bits = bits_per_symbol * 4  # 4 símbolos como ejemplo
-    
+
     # Asegurar que n_bits sea múltiplo de bits_per_symbol
     if n_bits % bits_per_symbol != 0:
         n_bits = (n_bits // bits_per_symbol + 1) * bits_per_symbol
         print(f"Ajustando n_bits a {n_bits} para tener símbolos completos")
-    
+
     # Generar bits aleatorios
     bits = rand_key(n_bits)
-    
+
     # Crear el formato de onda correspondiente
     wave_format = f"M_{modulation_type}"
     pulse_train = create_pulse_train(A, bits, wave_format=wave_format, M=M, fc=fc)
     spectrum = spectral_density(pulse_train, M=M, fc=fc)
-    
+
     # Graficar dominio temporal
     plt.figure(figsize=(10, 4))
     plt.plot(pulse_train[0], pulse_train[1])
@@ -380,7 +627,7 @@ def simulate_digital_modulation(modulation_type, M, A=1, n_bits=None, fc=1000):
     plt.grid(True)
     plt.tight_layout()
     plt.show()
-    
+
     # Graficar espectro
     plt.figure(figsize=(10, 4))
     plt.semilogy(spectrum[0], spectrum[1])
@@ -390,7 +637,7 @@ def simulate_digital_modulation(modulation_type, M, A=1, n_bits=None, fc=1000):
     plt.grid(True)
     plt.tight_layout()
     plt.show()
-    
+
     return {
         'bits': bits,
         'pulse_train': pulse_train,
@@ -421,64 +668,64 @@ de error en función del parámetro γ_b (relación señal a ruido por bit).
 def add_awgn_noise(signal, snr_db):
     """
     Agrega ruido gaussiano blanco aditivo (AWGN) a la señal.
-    
+
     Parámetros:
     - signal: Señal de entrada
     - snr_db: Relación señal a ruido en dB
-    
+
     Retorna:
     - Señal con ruido agregado
     """
     # Calcular la potencia de la señal
     signal_power = np.mean(signal**2)
-    
+
     # Calcular la potencia del ruido basada en el SNR deseado
     noise_power = signal_power / (10**(snr_db/10))
-    
+
     # Generar ruido gaussiano
     noise = np.random.normal(0, np.sqrt(noise_power), len(signal))
-    
+
     # Agregar el ruido a la señal
     noisy_signal = signal + noise
-    
+
     return noisy_signal
 
 def calculate_symbol_error_rate(modulation_type, M, n_symbols=1000, snr_db_range=None):
     """
     Calcula la tasa de error de símbolos para diferentes valores de SNR.
-    
+
     Parámetros:
     - modulation_type: Tipo de modulación ('ASK', 'PSK', 'QAM')
     - M: Orden de la modulación
     - n_symbols: Número de símbolos a simular
     - snr_db_range: Lista de valores SNR en dB a simular
-    
+
     Retorna:
     - Lista de tasas de error para cada valor de SNR
     """
     if snr_db_range is None:
         snr_db_range = np.arange(0, 21, 2)  # 0 a 20 dB en pasos de 2 dB
-    
+
     # Generar bits aleatorios
     bits_per_symbol = int(np.log2(M))
     n_bits = n_symbols * bits_per_symbol
     bits = rand_key(n_bits)
-    
+
     # Generar señal modulada
     signal = create_pulse_train(1, bits, wave_format=f"M_{modulation_type}", M=M, fc=1000)
-    
+
     # Lista para almacenar las tasas de error
     ser = []
-    
+
     # Calcular SER para cada valor de SNR
     for snr_db in snr_db_range:
         # Agregar ruido a la señal
         noisy_signal = add_awgn_noise(signal[1], snr_db)
-        
+
         # Detectar símbolos (simplificado - solo comparamos amplitudes)
         errors = np.sum(np.abs(signal[1] - noisy_signal) > 0.5)
         ser.append(errors / len(signal[1]))
-    
+
     return snr_db_range, ser
 
 # Simular tasa de error para diferentes modulaciones
